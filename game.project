@@ -1,0 +1,20 @@
+[bootstrap]
+main_collection = /example/main/main.collectionc
+
+[script]
+shared_state = 1
+
+[display]
+width = 960
+height = 640
+
+[android]
+input_method = HiddenInputField
+package = me.petcu.defoldapkx
+
+[project]
+title = APK Extension Example
+
+[input]
+game_binding = /example/input/game.input_bindingc
+
