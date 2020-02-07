@@ -1,0 +1,3 @@
+function init(self)
+	print("loaded script 2")
+end
