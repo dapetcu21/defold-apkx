@@ -17,26 +17,27 @@ function init(self)
 end
 
 local xapk_files_expected = {
-	{ is_main = true, version = 1, size = 0 }
+	{ is_main = true, version = 1 }
 }
 
 function xapk_files_delivered()
 	for _, file in ipairs(xapk_files_expected) do
-		local file_name = apkx.get_expansion_apk_file_name(file.is_main, file.version)
-		if not apkx.does_file_exist(file_name, file.size) then
-			return false
-		end
+		local file_path = apkx.get_expansion_apk_file_path(file.is_main, file.version)
+
+		-- Check if file exists
+		local f = io.open(file_path, "r")
+		if not f then return false end
+		f:close()
 	end
 	return true
 end
 
 function launch_downloader()
 	apkx.configure_download_service({
-		public_key = "YOUR PUBLIC KEY HERE", -- Get this from Google Play Console
-		salt = { -- Change this to a random value
-			1, 43, -12, -1, 54, 98,
-			-100, -12, 43, 2, -8, -4, 9, 5, -106, -108, -33, 45, -1, 84
-		},
+		-- Get this from Google Play Console
+		public_key = "YOUR BASE64-ENCODED PUBLIC KEY HERE",
+		-- Change this to a random 20-byte value unique to your app
+		salt = "\53\11\9\97\83\72\44\89\17\1\69\14\59\52\84\13\45\36\20\5",
 		on_download_state_change = function (state)
 			if state == apkx.STATE_COMPLETED then
 				-- Download finished. Start game

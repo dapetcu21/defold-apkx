@@ -2,5 +2,16 @@
 <manifest xmlns:android='http://schemas.android.com/apk/res/android'>
   <uses-sdk android:targetSdkVersion='{{android.target_sdk_version}}' />
   <uses-feature android:required='true' android:glEsVersion='0x00030000' />
+
   <uses-permission android:name="com.android.vending.CHECK_LICENSE" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+  <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+
+  <application>
+    <service android:name="me.petcu.defoldapkx.APKXDownloaderService" />
+    <receiver android:name="me.petcu.defoldapkx.APKXAlarmReceiver" />
+  </application>
 </manifest>
