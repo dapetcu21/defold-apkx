@@ -91,7 +91,7 @@ function store_resources_and_start()
 	local loaded_resource_count = 0
 	for _, resource_hash in ipairs(missing_resources) do
 		local file_content = apkx.zip_read(zip, resource_hash)
-		resources.store_resource(manifest, file_content, function (self, hexdigest, status)
+		resource.store_resource(manifest, file_content, resource_hash, function (self, hexdigest, status)
 			if status then
 				loaded_resource_count = loaded_resource_count + 1
 				label.set_text("#progress", loaded_resource_count .. "/" .. missing_resources_count)
