@@ -1,5 +1,5 @@
 local store_missing_resources
-local xapk_files_delivered
+local obb_files_delivered
 local launch_downloader
 local start_game
 
@@ -9,19 +9,21 @@ function init(self)
 		return
 	end
 
-	if not xapk_files_delivered() then
+	if not obb_files_delivered() then
 		launch_downloader()
 	else
 		store_resources_and_start()
 	end
 end
 
-local xapk_files_expected = {
+local obb_files_expected = {
 	{ is_main = true, version = 1 }
+	-- You can optionally add a patch file to partially override the content of the main OBB:
+	-- { is_main = false, version = 1 }
 }
 
-function xapk_files_delivered()
-	for _, file in ipairs(xapk_files_expected) do
+function obb_files_delivered()
+	for _, file in ipairs(obb_files_expected) do
 		local file_path = apkx.get_expansion_apk_file_path(file.is_main, file.version)
 
 		-- Check if file exists
@@ -54,7 +56,9 @@ function launch_downloader()
 		end,
 	})
 
-	if not apkx.start_download_service_if_required() then
+	if apkx.start_download_service_if_required() then
+		print("Downloading OBB...")
+	else
 		-- Download not required. Start game directly
 		store_resources_and_start()
 	end
@@ -62,17 +66,48 @@ end
 
 function store_resources_and_start()
 	local missing_resources = collectionproxy.missing_resources("#proxy")
+	local missing_resources_count = #missing_resources
 
-	if #missing_resources == 0 then
+	if missing_resources_count == 0 then
 		start_game()
 		return
 	end
 
-	pprint(missing_resources)
-	-- TODO: parse the ZIP file and store all these resources
+	print("OBB downloaded. Installing resources...")
+	label.set_text("#status", "Installing resources...")
+	label.set_text("#progress", "0/" .. missing_resources_count)
+
+	local zip_files = {}
+	for i, file in ipairs(obb_files_expected) do
+		zip_files[i] = apkx.get_expansion_apk_file_path(file.is_main, file.version)
+	end
+
+	local zip = apkx.zip_open(zip_files)
+	local manifest = resource.get_current_manifest()
+
+	-- TODO: This naive implementation will load all the resources in memory in one go.
+	-- If you have a large OBB, you should load only a few resources at a time, wait
+	-- for them to finish storing, then keep going with another small batch, etc.
+	local loaded_resource_count = 0
+	for _, resource_hash in ipairs(missing_resources) do
+		local file_content = apkx.zip_read(zip, resource_hash)
+		resources.store_resource(manifest, file_content, function (self, hexdigest, status)
+			if status then
+				loaded_resource_count = loaded_resource_count + 1
+				label.set_text("#progress", loaded_resource_count .. "/" .. missing_resources_count)
+				if loaded_resource_count == missing_resources_count then
+					start_game()
+				end
+			else
+				print("Failed to store resource: " .. hexdigest)
+			end
+		end)
+	end
 end
 
 function start_game()
+	print("No missing resources. Starting game...")
+
 	label.set_text("#status", "")
 	label.set_text("#progress", "")
 
@@ -81,5 +116,7 @@ end
 
 function on_message(self, message_id, message, sender)
 	if message_id == hash("proxy_loaded") then
+		msg.post(sender, "init")
+		msg.post(sender, "enable")
 	end
 end
