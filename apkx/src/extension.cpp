@@ -170,7 +170,8 @@ static int zip_open(lua_State* L) {
     }
 
     jobject *ud = (jobject*)lua_newuserdata(L, sizeof(return_value));
-    *ud = return_value;
+    *ud = env->NewGlobalRef(return_value);
+    env->DeleteLocalRef(return_value);
     luaL_getmetatable(L, "apkx.ZipResourceFile");
     lua_setmetatable(L, -2);
     return 1;
@@ -193,7 +194,7 @@ static int zip_gc(lua_State* L) {
 
     AttachScope attachscope;
     JNIEnv* env = attachscope.m_Env;
-    env->DeleteLocalRef(self);
+    env->DeleteGlobalRef(self);
     return 0;
 }
 
