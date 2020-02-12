@@ -111,6 +111,8 @@ static int configure_download_service(lua_State* L) {
     jmethodID method = env->GetStaticMethodID(cls, "configureDownloadService", "(Landroid/content/Context;Ljava/lang/String;[B)V");
 
     env->CallStaticVoidMethod(cls, method, dmGraphics::GetNativeAndroidActivity(), public_key, salt);
+    env->DeleteLocalRef(public_key);
+    env->DeleteLocalRef(salt);
     return 0;
 }
 
@@ -127,6 +129,74 @@ static int start_download_service_if_required(lua_State* L) {
     return 1;
 }
 
+static int zip_open(lua_State* L) {
+    DM_LUA_STACK_CHECK(L, 1);
+    AttachScope attachscope;
+    JNIEnv* env = attachscope.m_Env;
+
+    int array_len = 0;
+    for (int i = 1;; i += 1) {
+        lua_pushnumber(L, i);
+        lua_gettable(L, 1);
+        if (lua_isnoneornil(L, -1)) {
+            lua_pop(L, 1);
+            break;
+        }
+        luaL_checkstring(L, -1);
+        lua_pop(L, 1);
+        array_len = i;
+    }
+
+    jobjectArray array = env->NewObjectArray(array_len, env->FindClass("java/lang/String"), NULL);
+    for (int i = 1; i <= array_len; i += 1) {
+        lua_pushnumber(L, i);
+        lua_gettable(L, 1);
+        jstring entry = env->NewStringUTF(luaL_checkstring(L, -1));
+        lua_pop(L, 1);
+        env->SetObjectArrayElement(array, i - 1, entry);
+        env->DeleteLocalRef(entry);
+    }
+
+    jclass cls = GetClass(env, "com.google.android.vending.expansion.zipfile.APKExpansionSupport");
+    jmethodID method = env->GetStaticMethodID(cls, "getResourceZipFile", "([Ljava/lang/String;)Lcom/google/android/vending/expansion/zipfile/ZipResourceFile;");
+
+    jobject return_value = env->CallStaticObjectMethod(cls, method, array);
+    env->DeleteLocalRef(array);
+
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        luaL_error(L, "apkx.zip_open: Java exception");
+    }
+
+    jobject *ud = (jobject*)lua_newuserdata(L, sizeof(return_value));
+    *ud = return_value;
+    luaL_getmetatable(L, "apkx.ZipResourceFile");
+    lua_setmetatable(L, -2);
+    return 1;
+}
+
+static int zip_read(lua_State* L) {
+    DM_LUA_STACK_CHECK(L, 1);
+    jobject self = *(jobject*)luaL_checkudata(L, 1, "apkx.ZipResourceFile");
+
+    AttachScope attachscope;
+    JNIEnv* env = attachscope.m_Env;
+
+    lua_pushstring(L, "");
+    return 1;
+}
+
+static int zip_gc(lua_State* L) {
+    DM_LUA_STACK_CHECK(L, 0);
+    jobject self = *(jobject*)lua_touserdata(L, 1);
+
+    AttachScope attachscope;
+    JNIEnv* env = attachscope.m_Env;
+    env->DeleteLocalRef(self);
+    return 0;
+}
+
 // Functions exposed to Lua
 static const luaL_reg Module_methods[] =
 {
@@ -134,6 +204,8 @@ static const luaL_reg Module_methods[] =
     {"get_downloader_string_from_state", get_downloader_string_from_state},
     {"configure_download_service", configure_download_service},
     {"start_download_service_if_required", start_download_service_if_required},
+    {"zip_open", zip_open},
+    {"zip_read", zip_read},
     {0, 0}
 };
 
@@ -164,6 +236,12 @@ static void LuaInit(lua_State* L)
     set_enum("STATE_FAILED_SDCARD_FULL", 17);
     set_enum("STATE_FAILED_CANCELED", 18);
     set_enum("STATE_FAILED", 19);
+
+    luaL_newmetatable(L, "apkx.ZipResourceFile");
+    lua_pushstring(L, "__gc");
+    lua_pushcfunction(L, zip_gc);
+    lua_settable(L, -3);
+    lua_pop(L, 1);
 
     lua_pop(L, 1);
     assert(top == lua_gettop(L));
