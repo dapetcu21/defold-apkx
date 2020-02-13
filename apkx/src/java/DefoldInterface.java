@@ -10,6 +10,9 @@ import com.google.android.vending.expansion.downloader.Helpers;
 import com.google.android.vending.expansion.downloader.IDownloaderClient;
 import com.google.android.vending.expansion.downloader.IDownloaderService;
 import com.google.android.vending.expansion.downloader.IStub;
+import com.google.android.vending.expansion.zipfile.ZipResourceFile;
+import java.io.InputStream;
+import java.io.IOException;
 
 // import android.Manifest;
 import android.app.PendingIntent;
@@ -127,5 +130,22 @@ class DefoldInterface implements IDownloaderClient {
 
     public static final void onDeactivateApp(Context context) {
         DefoldInterface.getSingleton()._onDeactivateApp(context);
+    }
+
+    public static final byte[] zipGetFile(ZipResourceFile zip, String path) throws IOException {
+        InputStream stream = zip.getInputStream(path);
+        if (stream == null) {
+            return null;
+        }
+
+        int uncompressedLength = (int)zip.getUncompressedLength(path);
+        byte[] bytes = new byte[uncompressedLength];
+
+        long readBytes = stream.read(bytes, 0, uncompressedLength);
+        if (readBytes < uncompressedLength) {
+            return null;
+        }
+
+        return bytes;
     }
 }
