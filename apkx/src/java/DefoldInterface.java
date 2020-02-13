@@ -61,14 +61,17 @@ class DefoldInterface implements IDownloaderClient {
         mRemoteService.onClientUpdated(mDownloaderClientStub.getMessenger());
     }
 
+    static native void onDownloadProgressNative(DownloadProgressInfo progress);
+    static native void onDownloadStateChangedNative(int newState);
+
     @Override
     public void onDownloadStateChanged(int newState) {
-        Log.i(LOG_TAG, "onDownloadStateChanged");
+        DefoldInterface.onDownloadStateChangedNative(newState);
     }
 
     @Override
     public void onDownloadProgress(DownloadProgressInfo progress) {
-        Log.i(LOG_TAG, "onDownloadProgress");
+        DefoldInterface.onDownloadProgressNative(progress);
     }
 
     final boolean _startDownloadServiceIfRequired(Activity activity) {

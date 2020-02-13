@@ -88,6 +88,9 @@ static int get_downloader_string_from_state(lua_State* L) {
     return 1;
 }
 
+static dmScript::LuaCallbackInfo* lua_on_download_state_change = NULL;
+static dmScript::LuaCallbackInfo* lua_on_download_progress = NULL;
+
 static int configure_download_service(lua_State* L) {
     DM_LUA_STACK_CHECK(L, 0);
     AttachScope attachscope;
@@ -102,6 +105,20 @@ static int configure_download_service(lua_State* L) {
     lua_getfield(L, 1, "salt");
     size_t salt_len;
     const char* salt_ptr = luaL_checklstring(L, -1, &salt_len);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "on_download_state_change");
+    if (dmScript::IsCallbackValid(lua_on_download_state_change)) {
+        dmScript::DestroyCallback(lua_on_download_state_change);
+    }
+    lua_on_download_state_change = dmScript::CreateCallback(L, -1);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "on_download_progress");
+    if (dmScript::IsCallbackValid(lua_on_download_progress)) {
+        dmScript::DestroyCallback(lua_on_download_progress);
+    }
+    lua_on_download_progress = dmScript::CreateCallback(L, -1);
     lua_pop(L, 1);
 
     jbyteArray salt = env->NewByteArray(salt_len);
@@ -223,6 +240,45 @@ static int zip_gc(lua_State* L) {
     return 0;
 }
 
+extern "C" JNIEXPORT void JNICALL Java_me_petcu_defoldapkx_DefoldInterface_onDownloadProgressNative(JNIEnv * env, jobject progress) {
+    if (!dmScript::IsCallbackValid(lua_on_download_progress)) { return; }
+    lua_State *L = dmScript::GetCallbackLuaContext(lua_on_download_progress);
+    DM_LUA_STACK_CHECK(L, 0);
+
+    if (!dmScript::SetupCallback(lua_on_download_progress)) { return; }
+
+    lua_pop(L, 1); // Pop the self
+
+    jclass progress_class = env->GetObjectClass(progress);
+
+    lua_newtable(L);
+    lua_pushnumber(L, env->GetLongField(progress, env->GetFieldID(progress_class, "mOverallTotal", "J")));
+    lua_setfield(L, -2, "overall_total");
+    lua_pushnumber(L, env->GetLongField(progress, env->GetFieldID(progress_class, "mOverallProgress", "J")));
+    lua_setfield(L, -2, "overall_progress");
+    lua_pushnumber(L, env->GetLongField(progress, env->GetFieldID(progress_class, "mTimeRemaining", "J")));
+    lua_setfield(L, -2, "time_remaining");
+    lua_pushnumber(L, env->GetFloatField(progress, env->GetFieldID(progress_class, "mCurrentSpeed", "F")));
+    lua_setfield(L, -2, "current_speed");
+
+    dmScript::PCall(L, 1, 0);
+    dmScript::TeardownCallback(lua_on_download_progress);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_me_petcu_defoldapkx_DefoldInterface_onDownloadStateChangedNative(JNIEnv * env, jint state) {
+    if (!dmScript::IsCallbackValid(lua_on_download_state_change)) { return; }
+    lua_State *L = dmScript::GetCallbackLuaContext(lua_on_download_state_change);
+    DM_LUA_STACK_CHECK(L, 0);
+
+    if (!dmScript::SetupCallback(lua_on_download_state_change)) { return; }
+
+    lua_pop(L, 1); // Pop the self
+    lua_pushnumber(L, state);
+    dmScript::PCall(L, 1, 0);
+
+    dmScript::TeardownCallback(lua_on_download_state_change);
+}
+
 // Functions exposed to Lua
 static const luaL_reg Module_methods[] =
 {
@@ -291,6 +347,14 @@ static dmExtension::Result AppFinalizeExtension(dmExtension::AppParams* params)
 
 static dmExtension::Result FinalizeExtension(dmExtension::Params* params)
 {
+    if (dmScript::IsCallbackValid(lua_on_download_progress)) {
+        dmScript::DestroyCallback(lua_on_download_progress);
+        lua_on_download_progress = NULL;
+    }
+    if (dmScript::IsCallbackValid(lua_on_download_state_change)) {
+        dmScript::DestroyCallback(lua_on_download_state_change);
+        lua_on_download_state_change = NULL;
+    }
     return dmExtension::RESULT_OK;
 }
 
