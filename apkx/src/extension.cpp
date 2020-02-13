@@ -129,6 +129,15 @@ static int start_download_service_if_required(lua_State* L) {
     return 1;
 }
 
+#define EXCEPTION_CHECK \
+    if (env->ExceptionCheck()) { \
+        env->ExceptionDescribe(); \
+        env->ExceptionClear();
+
+#define EXCEPTION_CHECK_END \
+        luaL_error(L, "Java exception"); \
+    }
+
 static int zip_open(lua_State* L) {
     DM_LUA_STACK_CHECK(L, 1);
     AttachScope attachscope;
@@ -163,11 +172,7 @@ static int zip_open(lua_State* L) {
     jobject return_value = env->CallStaticObjectMethod(cls, method, array);
     env->DeleteLocalRef(array);
 
-    if (env->ExceptionCheck()) {
-        env->ExceptionDescribe();
-        env->ExceptionClear();
-        luaL_error(L, "apkx.zip_open: Java exception");
-    }
+    EXCEPTION_CHECK {} EXCEPTION_CHECK_END;
 
     jobject *ud = (jobject*)lua_newuserdata(L, sizeof(return_value));
     *ud = env->NewGlobalRef(return_value);
@@ -179,12 +184,64 @@ static int zip_open(lua_State* L) {
 
 static int zip_read(lua_State* L) {
     DM_LUA_STACK_CHECK(L, 1);
-    jobject self = *(jobject*)luaL_checkudata(L, 1, "apkx.ZipResourceFile");
 
     AttachScope attachscope;
     JNIEnv* env = attachscope.m_Env;
 
-    lua_pushstring(L, "");
+    jobject zip = *(jobject*)luaL_checkudata(L, 1, "apkx.ZipResourceFile");
+    jstring path = env->NewStringUTF(luaL_checkstring(L, 2));
+
+    jclass zipcls = GetClass(env, "com.google.android.vending.expansion.zipfile.ZipResourceFile");
+    jmethodID len_method = env->GetMethodID(zipcls, "getUncompressedLength", "(Ljava/lang/String;)J");
+    jmethodID stream_method = env->GetMethodID(zipcls, "getInputStream", "(Ljava/lang/String;)Ljava/io/InputStream;");
+
+    jclass streamcls = GetClass(env, "java.io.InputStream");
+    jmethodID read_method = env->GetMethodID(streamcls, "read", "([BII)I");
+
+    jobject stream = env->CallObjectMethod(zip, stream_method, path);
+    EXCEPTION_CHECK {
+        env->DeleteLocalRef(path);
+    } EXCEPTION_CHECK_END;
+
+    if (!stream) {
+        env->DeleteLocalRef(path);
+        lua_pushnil(L);
+        return 1;
+    }
+
+    jlong uncompressed_length = env->CallLongMethod(zip, len_method, path);
+    env->DeleteLocalRef(path);
+
+    // dmLogInfo("uncompressed_length %llu", (unsigned long long)uncompressed_length);
+
+    if (uncompressed_length <= 0) {
+        env->DeleteLocalRef(stream);
+        lua_pushstring(L, "");
+        return 1;
+    }
+
+    jbyteArray bytes = env->NewByteArray((jsize)uncompressed_length);
+
+    jint read_bytes = env->CallIntMethod(stream, read_method, bytes, 0, (jint)uncompressed_length);
+    env->DeleteLocalRef(stream);
+    EXCEPTION_CHECK {
+        env->DeleteLocalRef(bytes);
+    } EXCEPTION_CHECK_END;
+
+    // dmLogInfo("read_bytes %d", read_bytes);
+
+    if (read_bytes <= 0) {
+        env->DeleteLocalRef(bytes);
+        lua_pushstring(L, "");
+        return 1;
+    }
+
+    jboolean is_copy = false;
+    jbyte* bytes_ptr = env->GetByteArrayElements(bytes, &is_copy);
+    lua_pushlstring(L, (const char*)bytes_ptr, read_bytes);
+    env->ReleaseByteArrayElements(bytes, bytes_ptr, JNI_ABORT);
+    env->DeleteLocalRef(bytes);
+
     return 1;
 }
 
