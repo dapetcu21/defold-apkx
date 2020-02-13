@@ -40,7 +40,7 @@ function launch_downloader()
 		public_key = "YOUR BASE64-ENCODED PUBLIC KEY HERE",
 		-- Change this to a random 20-byte value unique to your app
 		salt = "\53\11\9\97\83\72\44\89\17\1\69\14\59\52\84\13\45\36\20\5",
-		on_download_state_change = function (state)
+		on_download_state_change = function (self, state)
 			if state == apkx.STATE_COMPLETED then
 				-- Download finished. Start game
 				store_resources_and_start()
@@ -48,7 +48,7 @@ function launch_downloader()
 				label.set_text("#status", apkx.get_downloader_string_from_state(state))
 			end
 		end,
-		on_download_progress = function (progress)
+		on_download_progress = function (self, progress)
 			local current_speed = progress.current_speed * 1000 / 1024
 			local time_remaining = progress.time_remaining / 1000
 			local fraction = math.floor(progress.overall_progress * 100 / progress.overall_total)

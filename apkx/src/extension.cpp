@@ -247,8 +247,6 @@ extern "C" JNIEXPORT void JNICALL Java_me_petcu_defoldapkx_DefoldInterface_onDow
 
     if (!dmScript::SetupCallback(lua_on_download_progress)) { return; }
 
-    lua_pop(L, 1); // Pop the self
-
     jclass progress_class = env->GetObjectClass(progress);
 
     lua_newtable(L);
@@ -261,7 +259,7 @@ extern "C" JNIEXPORT void JNICALL Java_me_petcu_defoldapkx_DefoldInterface_onDow
     lua_pushnumber(L, env->GetFloatField(progress, env->GetFieldID(progress_class, "mCurrentSpeed", "F")));
     lua_setfield(L, -2, "current_speed");
 
-    dmScript::PCall(L, 1, 0);
+    dmScript::PCall(L, 2, 0);
     dmScript::TeardownCallback(lua_on_download_progress);
 }
 
@@ -272,9 +270,8 @@ extern "C" JNIEXPORT void JNICALL Java_me_petcu_defoldapkx_DefoldInterface_onDow
 
     if (!dmScript::SetupCallback(lua_on_download_state_change)) { return; }
 
-    lua_pop(L, 1); // Pop the self
     lua_pushnumber(L, state);
-    dmScript::PCall(L, 1, 0);
+    dmScript::PCall(L, 2, 0);
 
     dmScript::TeardownCallback(lua_on_download_state_change);
 }
