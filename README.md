@@ -96,6 +96,14 @@ as a Lua string.
 
 **This does synchronous I/O, so may block and cause frame stutters. Sorry about this.**
 
+---
+
+```
+local state_description = apkx.get_downloader_string_from_state(state)
+```
+
+Returns a user-friendly description `string` of a download `state`.
+
 -----
 
 ```
@@ -120,7 +128,7 @@ apkx.STATE_FAILED_CANCELED
 apkx.STATE_FAILED
 ```
 
-Download state constants
+Download state constants. See [here](https://github.com/google/play-apk-expansion/blob/master/apkx_library/src/com/google/android/vending/expansion/downloader/IDownloaderClient.java) for more details.
 
 -----
 
