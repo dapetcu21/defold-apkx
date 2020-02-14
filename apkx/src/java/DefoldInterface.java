@@ -37,7 +37,7 @@ import android.util.Log;
 // import android.widget.TextView;
 
 class DefoldInterface implements IDownloaderClient {
-    private static final String LOG_TAG = "LVLDownloader";
+    private static final String LOG_TAG = "DefoldAPKX";
 
     public static final String getExpansionAPKFilePath(Context context, boolean mainFile, int versionCode) {
         return Helpers.generateSaveFileName(context,
