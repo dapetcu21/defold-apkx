@@ -11,6 +11,7 @@ import com.google.android.vending.expansion.downloader.IDownloaderClient;
 import com.google.android.vending.expansion.downloader.IDownloaderService;
 import com.google.android.vending.expansion.downloader.IStub;
 import com.google.android.vending.expansion.zipfile.ZipResourceFile;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.io.InputStream;
 import java.io.IOException;
 
@@ -61,17 +62,45 @@ class DefoldInterface implements IDownloaderClient {
         mRemoteService.onClientUpdated(mDownloaderClientStub.getMessenger());
     }
 
+    class CallbackMessage {
+        static final int TYPE_DOWNLOAD_STATE_CHANGED = 0;
+        static final int TYPE_DOWNLOAD_PROGRESS = 1;
+        int type;
+        int state;
+        DownloadProgressInfo progress;
+    }
+    ConcurrentLinkedQueue<CallbackMessage> messageQueue = new ConcurrentLinkedQueue<CallbackMessage>();
+
     static native void onDownloadProgressNative(DownloadProgressInfo progress);
     static native void onDownloadStateChangedNative(int newState);
 
     @Override
     public void onDownloadStateChanged(int newState) {
-        DefoldInterface.onDownloadStateChangedNative(newState);
+        CallbackMessage message = new CallbackMessage();
+        message.type = CallbackMessage.TYPE_DOWNLOAD_STATE_CHANGED;
+        message.state = newState;
+        messageQueue.add(message);
     }
 
     @Override
     public void onDownloadProgress(DownloadProgressInfo progress) {
-        DefoldInterface.onDownloadProgressNative(progress);
+        CallbackMessage message = new CallbackMessage();
+        message.type = CallbackMessage.TYPE_DOWNLOAD_PROGRESS;
+        message.progress = progress;
+        messageQueue.add(message);
+    }
+
+    public static final void flushMessageQueue() {
+        DefoldInterface this_ = DefoldInterface.getSingleton();
+        while (true) {
+            CallbackMessage message = this_.messageQueue.poll();
+            if (message == null) { return; }
+            if (message.type == CallbackMessage.TYPE_DOWNLOAD_STATE_CHANGED) {
+                DefoldInterface.onDownloadStateChangedNative(message.state);
+            } else if (message.type == CallbackMessage.TYPE_DOWNLOAD_PROGRESS) {
+                DefoldInterface.onDownloadProgressNative(message.progress);
+            }
+        }
     }
 
     final boolean _startDownloadServiceIfRequired(Activity activity) {
@@ -87,32 +116,55 @@ class DefoldInterface implements IDownloaderClient {
                 }
             }
 
-            if (DownloaderClientMarshaller.startDownloadServiceIfRequired(activity,
-                    PendingIntent.getActivity(activity, 0, intentToLaunchThisActivityFromNotification, PendingIntent.FLAG_UPDATE_CURRENT),
-                    APKXDownloaderService.class
-                ) != DownloaderClientMarshaller.NO_DOWNLOAD_REQUIRED
-            ) {
-                mDownloaderClientStub = DownloaderClientMarshaller.CreateStub(this, APKXDownloaderService.class);
-                mDownloaderClientStub.connect(activity);
+            int result = DownloaderClientMarshaller.startDownloadServiceIfRequired(activity,
+                PendingIntent.getActivity(activity, 0, intentToLaunchThisActivityFromNotification, PendingIntent.FLAG_UPDATE_CURRENT),
+                APKXDownloaderService.class
+            );
+
+            if (result != DownloaderClientMarshaller.NO_DOWNLOAD_REQUIRED) {
+                final DefoldInterface _this = this;
+                final Activity _activity = activity;
+                activity.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        mDownloaderClientStub = DownloaderClientMarshaller.CreateStub(_this, APKXDownloaderService.class);
+                        mDownloaderClientStub.connect(_activity);
+                    }
+                });
                 return true;
             }
         } catch (NameNotFoundException e) {
             Log.e(LOG_TAG, "Cannot find own package! MAYDAY!");
             e.printStackTrace();
+        } catch (Exception e) {
+            Log.e(LOG_TAG, "Error happened!");
+            e.printStackTrace();
         }
         return false;
     }
 
-    final void _onActivateApp(Context context) {
-        if (null != mDownloaderClientStub) {
-            mDownloaderClientStub.connect(context);
-        }
+    final void _onActivateApp(Activity activity) {
+        final Activity _activity = activity;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (null != mDownloaderClientStub) {
+                    mDownloaderClientStub.connect(_activity);
+                }
+            }
+        });
     }
 
-    final void _onDeactivateApp(Context context) {
-        if (null != mDownloaderClientStub) {
-            mDownloaderClientStub.disconnect(context);
-        }
+    final void _onDeactivateApp(Activity activity) {
+        final Activity _activity = activity;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (null != mDownloaderClientStub) {
+                    mDownloaderClientStub.disconnect(_activity);
+                }
+            }
+        });
     }
 
     static DefoldInterface _singleton;
@@ -127,12 +179,12 @@ class DefoldInterface implements IDownloaderClient {
         return DefoldInterface.getSingleton()._startDownloadServiceIfRequired(activity);
     }
 
-    public static final void onActivateApp(Context context) {
-        DefoldInterface.getSingleton()._onActivateApp(context);
+    public static final void onActivateApp(Activity activity) {
+        DefoldInterface.getSingleton()._onActivateApp(activity);
     }
 
-    public static final void onDeactivateApp(Context context) {
-        DefoldInterface.getSingleton()._onDeactivateApp(context);
+    public static final void onDeactivateApp(Activity activity) {
+        DefoldInterface.getSingleton()._onDeactivateApp(activity);
     }
 
     public static final byte[] zipGetFile(ZipResourceFile zip, String path) throws IOException {

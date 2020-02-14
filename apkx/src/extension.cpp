@@ -8,33 +8,26 @@
 
 #if defined(DM_PLATFORM_ANDROID)
 
-static JNIEnv* Attach()
-{
-    JNIEnv* env;
-    JavaVM* vm = dmGraphics::GetNativeAndroidJavaVM();
-    vm->AttachCurrentThread(&env, NULL);
-    return env;
-}
-
-static bool Detach(JNIEnv* env)
-{
-    bool exception = (bool) env->ExceptionCheck();
-    env->ExceptionClear();
-    JavaVM* vm = dmGraphics::GetNativeAndroidJavaVM();
-    vm->DetachCurrentThread();
-    return !exception;
-}
-
 namespace {
 struct AttachScope
 {
     JNIEnv* m_Env;
-    AttachScope() : m_Env(Attach())
-    {
+    bool shouldDetach;
+    AttachScope() : shouldDetach(false) {
+        JavaVM* vm = dmGraphics::GetNativeAndroidJavaVM();
+        if (JNI_OK != vm->GetEnv((void**)&m_Env, JNI_VERSION_1_6)) {
+            shouldDetach = true;
+            vm->AttachCurrentThread(&m_Env, NULL);
+        }
     }
     ~AttachScope()
     {
-        Detach(m_Env);
+        bool exception = (bool)m_Env->ExceptionCheck();
+        m_Env->ExceptionClear();
+        if (shouldDetach) {
+            JavaVM* vm = dmGraphics::GetNativeAndroidJavaVM();
+            vm->DetachCurrentThread();
+        }
     }
 };
 }
@@ -142,7 +135,7 @@ static int start_download_service_if_required(lua_State* L) {
     jmethodID method = env->GetStaticMethodID(cls, "startDownloadServiceIfRequired", "(Landroid/app/Activity;)Z");
 
     jboolean return_value = env->CallStaticBooleanMethod(cls, method, dmGraphics::GetNativeAndroidActivity());
-    lua_pushboolean(L, return_value);
+    lua_pushboolean(L, return_value != JNI_FALSE);
     return 1;
 }
 
@@ -240,7 +233,7 @@ static int zip_gc(lua_State* L) {
     return 0;
 }
 
-extern "C" JNIEXPORT void JNICALL Java_me_petcu_defoldapkx_DefoldInterface_onDownloadProgressNative(JNIEnv * env, jobject progress) {
+extern "C" JNIEXPORT void JNICALL Java_me_petcu_defoldapkx_DefoldInterface_onDownloadProgressNative(JNIEnv * env, jclass cls, jobject progress) {
     if (!dmScript::IsCallbackValid(lua_on_download_progress)) { return; }
     lua_State *L = dmScript::GetCallbackLuaContext(lua_on_download_progress);
     DM_LUA_STACK_CHECK(L, 0);
@@ -263,7 +256,7 @@ extern "C" JNIEXPORT void JNICALL Java_me_petcu_defoldapkx_DefoldInterface_onDow
     dmScript::TeardownCallback(lua_on_download_progress);
 }
 
-extern "C" JNIEXPORT void JNICALL Java_me_petcu_defoldapkx_DefoldInterface_onDownloadStateChangedNative(JNIEnv * env, jint state) {
+extern "C" JNIEXPORT void JNICALL Java_me_petcu_defoldapkx_DefoldInterface_onDownloadStateChangedNative(JNIEnv * env, jclass cls, jint state) {
     if (!dmScript::IsCallbackValid(lua_on_download_state_change)) { return; }
     lua_State *L = dmScript::GetCallbackLuaContext(lua_on_download_state_change);
     DM_LUA_STACK_CHECK(L, 0);
@@ -331,9 +324,19 @@ static dmExtension::Result AppInitializeExtension(dmExtension::AppParams* params
     return dmExtension::RESULT_OK;
 }
 
+static jclass DefoldInterface_class;
+static jmethodID flushMessageQueue_method;
+
 static dmExtension::Result InitializeExtension(dmExtension::Params* params)
 {
     LuaInit(params->m_L);
+
+    AttachScope attachscope;
+    JNIEnv* env = attachscope.m_Env;
+
+    DefoldInterface_class = (jclass)env->NewGlobalRef(GetClass(env, "me.petcu.defoldapkx.DefoldInterface"));
+    flushMessageQueue_method = env->GetStaticMethodID(DefoldInterface_class, "flushMessageQueue", "()V");
+
     return dmExtension::RESULT_OK;
 }
 
@@ -352,6 +355,13 @@ static dmExtension::Result FinalizeExtension(dmExtension::Params* params)
         dmScript::DestroyCallback(lua_on_download_state_change);
         lua_on_download_state_change = NULL;
     }
+    if (DefoldInterface_class) {
+        AttachScope attachscope;
+        JNIEnv* env = attachscope.m_Env;
+        env->DeleteGlobalRef(DefoldInterface_class);
+        DefoldInterface_class = NULL;
+    }
+
     return dmExtension::RESULT_OK;
 }
 
@@ -362,7 +372,7 @@ static void OnEventExtension(dmExtension::Params* params, const dmExtension::Eve
         JNIEnv* env = attachscope.m_Env;
 
         jclass cls = GetClass(env, "me.petcu.defoldapkx.DefoldInterface");
-        jmethodID method = env->GetStaticMethodID(cls, "onActivateApp", "(Landroid/content/Context;)V");
+        jmethodID method = env->GetStaticMethodID(cls, "onActivateApp", "(Landroid/app/Activity;)V");
         env->CallStaticVoidMethod(cls, method, dmGraphics::GetNativeAndroidActivity());
 
     } else if (event->m_Event == dmExtension::EVENT_ID_DEACTIVATEAPP) {
@@ -370,9 +380,19 @@ static void OnEventExtension(dmExtension::Params* params, const dmExtension::Eve
         JNIEnv* env = attachscope.m_Env;
 
         jclass cls = GetClass(env, "me.petcu.defoldapkx.DefoldInterface");
-        jmethodID method = env->GetStaticMethodID(cls, "onDeactivateApp", "(Landroid/content/Context;)V");
+        jmethodID method = env->GetStaticMethodID(cls, "onDeactivateApp", "(Landroid/app/Activity;)V");
         env->CallStaticVoidMethod(cls, method, dmGraphics::GetNativeAndroidActivity());
     }
+}
+
+static dmExtension::Result UpdateExtension(dmExtension::Params* params)
+{
+    AttachScope attachscope;
+    JNIEnv* env = attachscope.m_Env;
+
+    env->CallStaticVoidMethod(DefoldInterface_class, flushMessageQueue_method);
+
+    return dmExtension::RESULT_OK;
 }
 
 #else
@@ -398,7 +418,8 @@ static dmExtension::Result FinalizeExtension(dmExtension::Params* params)
 }
 
 #define OnEventExtension 0
+#define UpdateExtension 0
 
 #endif
 
-DM_DECLARE_EXTENSION(EXTENSION_NAME, LIB_NAME, AppInitializeExtension, AppFinalizeExtension, InitializeExtension, 0, OnEventExtension, FinalizeExtension)
+DM_DECLARE_EXTENSION(EXTENSION_NAME, LIB_NAME, AppInitializeExtension, AppFinalizeExtension, InitializeExtension, UpdateExtension, OnEventExtension, FinalizeExtension)
