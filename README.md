@@ -30,7 +30,7 @@ time.
 
 ## API
 
-```
+```lua
 local file_path = apkx.get_expansion_apk_file_path(is_main, version)
 ```
 
@@ -41,7 +41,7 @@ Returns the path to where the OBB should reside.
 
 -----
 
-```
+```lua
 apkx.configure_download_service(options)
 ```
 
@@ -63,7 +63,7 @@ changes. `progress` is a table with the following fields:
 
 -----
 
-```
+```lua
 local started = apkx.start_download_service_if_required()
 ```
 
@@ -74,7 +74,7 @@ downloaded or if there are no OBB files assigned to the APK in Google Play Conso
 
 -----
 
-```
+```lua
 local zip_handle = apkx.zip_open(zip_filenames)
 ```
 
@@ -87,7 +87,7 @@ existing ones).
 
 -----
 
-```
+```lua
 local contents = apkx.zip_read(zip_handle, file_path)
 ```
 
@@ -106,7 +106,7 @@ Returns a user-friendly description `string` of a download `state`.
 
 -----
 
-```
+```lua
 apkx.STATE_IDLE
 apkx.STATE_FETCHING_URL
 apkx.STATE_CONNECTING
