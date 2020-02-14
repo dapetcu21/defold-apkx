@@ -10,9 +10,9 @@ function init(self)
 	end
 
 	if not obb_files_delivered() then
-		launch_downloader()
+		launch_downloader(self)
 	else
-		store_resources_and_start()
+		store_resources_and_start(self)
 	end
 end
 
@@ -34,7 +34,7 @@ function obb_files_delivered()
 	return true
 end
 
-function launch_downloader()
+function launch_downloader(self)
 	apkx.configure_download_service({
 		-- Get this from Google Play Console -> Your app -> Services & APIs
 		public_key = "YOUR BASE64-ENCODED PUBLIC KEY HERE",
@@ -43,7 +43,7 @@ function launch_downloader()
 		on_download_state_change = function (self, state)
 			if state == apkx.STATE_COMPLETED then
 				-- Download finished. Start game
-				store_resources_and_start()
+				store_resources_and_start(self)
 			else
 				label.set_text("#status", apkx.get_downloader_string_from_state(state))
 			end
@@ -60,11 +60,15 @@ function launch_downloader()
 		print("Downloading OBB...")
 	else
 		-- Download not required. Start game directly
-		store_resources_and_start()
+		store_resources_and_start(self)
 	end
 end
 
-function store_resources_and_start()
+function store_resources_and_start(self)
+	-- This could potentially get called twice from on_download_state_change
+	if self.entered_store_and_start then return end
+	self.entered_store_and_start = true
+
 	local missing_resources = collectionproxy.missing_resources("#proxy")
 	local missing_resources_count = #missing_resources
 
