@@ -129,10 +129,8 @@ function store_resources_and_start(self)
 						load_timer = nil
 					end
 					if store_resource_errored then
-						loader.set_progress({
-							label = "An error occured while installing resources",
-							progress = ""
-						})
+						label.set_text("#status", "An error occured while installing resources")
+						label.set_text("#progress", "")
 					else
 						start_game()
 					end
