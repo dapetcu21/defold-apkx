@@ -37,10 +37,12 @@ end
 function launch_downloader(self)
 	apkx.configure_download_service({
 		-- Get this from Google Play Console -> Your app -> Services & APIs
-		public_key = "YOUR BASE64-ENCODED PUBLIC KEY HERE",
+		public_key = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoKa8wTl63hYvOI59Aq5dROcF2AtpALGvwe/Mtou1QdeG9zYSAS/ZVRqf7KsJWAUID5epYuPcotjSXC2tzgW+DP5Yuvz1PGzNfjFaao9G9Ak0+lPFXHOUQUJQbIo70kGMEPzpu1LOFSGb9zxZnRiea6Xp/gessnT7Kgc5SbE1eKudaOFF0llLh4+1+tT6VLFruleId4YUt+oUgNaO2nODPZmKBN1XJ9IX+sHRKokq+qwGP8f2XNvkBNBJx9RTJmkSbG/+1yc0+fUKhfLR9oGIDCgi6RixUs7qq71WH2H9potzTNhE+QaP0YWo2wpH7tuFdado2vVBxnyDm1J+Ql+dUwIDAQAB",
+		-- public_key = "YOUR BASE64-ENCODED PUBLIC KEY HERE",
 		-- Change this to a random 20-byte value unique to your app
 		salt = "\53\11\9\97\83\72\44\89\17\1\69\14\59\52\84\13\45\36\20\5",
 		on_download_state_change = function (self, state)
+			print("on_download_state_change", state)
 			if state == apkx.STATE_COMPLETED then
 				-- Download finished. Start game
 				store_resources_and_start(self)
@@ -49,6 +51,7 @@ function launch_downloader(self)
 			end
 		end,
 		on_download_progress = function (self, progress)
+			pprint("on_download_progress", progress)
 			local current_speed = progress.current_speed * 1000 / 1024
 			local time_remaining = progress.time_remaining / 1000
 			local fraction = math.floor(progress.overall_progress * 100 / progress.overall_total)
@@ -89,24 +92,61 @@ function store_resources_and_start(self)
 	local zip = apkx.zip_open(zip_files)
 	local manifest = resource.get_current_manifest()
 
-	-- TODO: This naive implementation will load all the resources in memory in one go.
-	-- If you have a large OBB, you should load only a few resources at a time, wait
-	-- for them to finish storing, then keep going with another small batch, etc.
+	-- We make sure that we don't block the current frame for too long nor load
+	-- too many resources in memory at one time
+	local memory_quota = 100 * 1024 * 1024 -- 100MB
+	local time_quota = 0.25
 	local loaded_resource_count = 0
-	for _, resource_hash in ipairs(missing_resources) do
-		local file_content = apkx.zip_read(zip, resource_hash)
-		resource.store_resource(manifest, file_content, resource_hash, function (self, hexdigest, status)
-			if status then
+	local processed_resource_count = 0
+	local used_memory = 0
+	local store_resource_errored = false
+	local load_timer
+
+	local function update()
+		local current_time = socket.gettime()
+		while processed_resource_count < missing_resources_count and used_memory < memory_quota do
+			processed_resource_count = processed_resource_count + 1
+			local resource_hash = missing_resources[processed_resource_count]
+
+			local file_content = apkx.zip_read(zip, resource_hash)
+			local size = string.len(file_content)
+			used_memory = used_memory + size
+
+			resource.store_resource(manifest, file_content, resource_hash, function (self_, hexdigest, status)
+				used_memory = used_memory - size
+
 				loaded_resource_count = loaded_resource_count + 1
 				label.set_text("#progress", loaded_resource_count .. "/" .. missing_resources_count)
-				if loaded_resource_count == missing_resources_count then
-					start_game()
+
+				if not status then
+					store_resource_errored = true
+					print("Failed to store resource: " .. hexdigest)
 				end
-			else
-				print("Failed to store resource: " .. hexdigest)
+
+				if loaded_resource_count == missing_resources_count then
+					if load_timer then
+						timer.cancel(load_timer)
+						load_timer = nil
+					end
+					if store_resource_errored then
+						loader.set_progress({
+							label = "An error occured while installing resources",
+							progress = ""
+						})
+					else
+						start_game()
+					end
+				end
+			end)
+
+			if socket.gettime() - current_time > time_quota then
+				break
 			end
-		end)
+		end
 	end
+
+	load_timer = timer.delay(0.0, true, update)
+	update()
 end
 
 function start_game()
