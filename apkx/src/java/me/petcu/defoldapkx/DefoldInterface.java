@@ -196,9 +196,13 @@ class DefoldInterface implements IDownloaderClient {
         int uncompressedLength = (int)zip.getUncompressedLength(path);
         byte[] bytes = new byte[uncompressedLength];
 
-        long readBytes = stream.read(bytes, 0, uncompressedLength);
-        if (readBytes < uncompressedLength) {
-            return null;
+        int index = 0;
+        while (index < uncompressedLength) {
+          int readBytes = stream.read(bytes, index, uncompressedLength - index);
+          if (readBytes < 0) {
+            return null; // Unexpected EOF
+          }
+          index += readBytes;
         }
 
         return bytes;
