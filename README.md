@@ -98,7 +98,7 @@ as a Lua string.
 
 ---
 
-```
+```lua
 local state_description = apkx.get_downloader_string_from_state(state)
 ```
 
