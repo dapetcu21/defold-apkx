@@ -20,3 +20,7 @@ game_binding = /example/input/game.input_bindingc
 
 [library]
 include_dirs = apkx
+
+[native_extension]
+app_manifest = /generated.appmanifest
+
